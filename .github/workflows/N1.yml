@@ -108,13 +108,13 @@ jobs:
       - name: Upload OpenWrt Firmware to Release
         uses: softprops/action-gh-release@v1
         if: steps.tag.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ${{ steps.tag.outputs.release_tag }}
-        body: |
-          This is OpenWrt firmware for Armvirt 64
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ steps.tag.outputs.release_tag }}
+          body: |
+            This is OpenWrt firmware for Armvirt 64
             * Firmware information
               Install to EMMC: Login to OpenWrt → System → Amlogic Service → Install OpenWrt
-        files: ${{ env.FIRMWARE }}/*
+          files: ${{ env.FIRMWARE }}/*
       
