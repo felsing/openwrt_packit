@@ -106,7 +106,7 @@ jobs:
           KERNEL_AUTO_LATEST: ${{ github.event.inputs.auto_kernel }}
            
       - name: Upload OpenWrt Firmware to Release
-        uses: ncipollo/release-action@main
+        uses: softprops/action-gh-release@v1
         if: env.PACKAGED_STATUS == 'success' && !cancelled()
         with:
           tag: OpenWrt_aarch64_${{ env.PACKAGED_OUTPUTDATE }}
