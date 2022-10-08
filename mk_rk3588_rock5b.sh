@@ -38,8 +38,7 @@ TGT_IMG="${WORK_DIR}/openwrt_${SOC}_${BOARD}_${OPENWRT_VER}_k${KERNEL_VERSION}${
 REGULATORY_DB="${PWD}/files/regulatory.db.tar.gz"
 CPUSTAT_SCRIPT="${PWD}/files/cpustat"
 CPUSTAT_SCRIPT_PY="${PWD}/files/cpustat.py"
-CPUSTAT_PATCH="${PWD}/files/luci-admin-status-index-html.patch"
-CPUSTAT_PATCH_02="${PWD}/files/luci-admin-status-index-html-02.patch"
+INDEX_PATCH_HOME="${PWD}/files/index.html.patches"
 GETCPU_SCRIPT="${PWD}/files/getcpu"
 KMOD="${PWD}/files/kmod"
 KMOD_BLACKLIST="${PWD}/files/kmod_blacklist"
@@ -55,9 +54,6 @@ BANNER="${PWD}/files/banner"
 FMW_HOME="${PWD}/files/firmware"
 SMB4_PATCH="${PWD}/files/smb4.11_enable_smb1.patch"
 SYSCTL_CUSTOM_CONF="${PWD}/files/99-custom.conf"
-
-# 20200403 add
-SND_MOD="${PWD}/files/rk3588/rock5b/snd-rock5b"
 
 # 20200709 add
 COREMARK="${PWD}/files/coremark.sh"
@@ -108,6 +104,8 @@ SSH_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr
 SSHD_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
 # 20220906 add
 PWM_FAN="${PWD}/files/rk3588/rock5b/pwm-fan.pl"
+# 20221001 add
+MODULES_HOME="${PWD}/files/rk3328/modules.d"
 ####################################################################
 
 check_depends
