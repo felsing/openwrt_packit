@@ -44,11 +44,11 @@ PACKAGE_OPENWRT_KERNEL6=("r66s" "r68s" "h66k" "h68k" "e25")
 PACKAGE_SOC_VALUE="all"
 
 # Set the default packaged kernel download repository
-KERNEL_REPO_URL_VALUE="https://github.com/breakings/OpenWrt/tree/main/opt"
-# Common kernel directory, RK3588 kernel directory, [ rk3588 ] is the fixed name
-KERNEL_DIR=("kernel" "rk3588")
-COMMON_KERNEL=("6.1.10" "5.15.50")
-RK3588_KERNEL=("5.10.110")
+KERNEL_REPO_URL_VALUE="breakings/OpenWrt"
+# Common releases kernel tag: kernel_stable, kernel_rk3588
+KERNEL_DIR=("stable" "rk3588")
+COMMON_KERNEL=("6.1.1" "5.15.1")
+RK3588_KERNEL=("5.10.1")
 KERNEL_AUTO_LATEST_VALUE="true"
 
 # Set the working directory under /opt
@@ -109,14 +109,13 @@ init_var() {
 
     # Install the compressed package
     sudo apt-get -qq update
-    sudo apt-get -qq install -y curl wget subversion git coreutils p7zip p7zip-full zip unzip gzip xz-utils pigz zstd
+    sudo apt-get -qq install -y curl wget subversion git coreutils p7zip p7zip-full zip unzip gzip xz-utils pigz zstd jq tar
 
     # Specify the default value
     [[ -n "${SCRIPT_REPO_URL}" ]] || SCRIPT_REPO_URL="${SCRIPT_REPO_URL_VALUE}"
     [[ "${SCRIPT_REPO_URL}" == http* ]] || SCRIPT_REPO_URL="https://github.com/${SCRIPT_REPO_URL}"
     [[ -n "${SCRIPT_REPO_BRANCH}" ]] || SCRIPT_REPO_BRANCH="${SCRIPT_REPO_BRANCH_VALUE}"
     [[ -n "${KERNEL_REPO_URL}" ]] || KERNEL_REPO_URL="${KERNEL_REPO_URL_VALUE}"
-    [[ "${KERNEL_REPO_URL}" == http* ]] || KERNEL_REPO_URL="https://github.com/${KERNEL_REPO_URL}"
     [[ -n "${PACKAGE_SOC}" ]] || PACKAGE_SOC="${PACKAGE_SOC_VALUE}"
     [[ -n "${KERNEL_AUTO_LATEST}" ]] || KERNEL_AUTO_LATEST="${KERNEL_AUTO_LATEST_VALUE}"
     [[ -n "${GZIP_IMGS}" ]] || GZIP_IMGS="${GZIP_IMGS_VALUE}"
@@ -167,29 +166,11 @@ init_var() {
     }
     echo -e "${INFO} Package OpenWrt List: [ ${PACKAGE_OPENWRT[*]} ]"
 
-    # Reset KERNEL_DIR options
-    [[ -n "${KERNEL_VERSION_DIR}" ]] && {
-        unset KERNEL_DIR
-        oldIFS=$IFS
-        IFS=_
-        KERNEL_DIR=(${KERNEL_VERSION_DIR})
-        IFS=$oldIFS
-    }
-
-    # KERNEL_REPO_URL URL format conversion to support svn co
-    KERNEL_REPO_URL="${KERNEL_REPO_URL//tree\/main/trunk}"
-    # Remove [ /kernel ] for breakings kernel repository
-    [[ "${KERNEL_REPO_URL,,}" == *"github.com/breakings/openwrt/"* ]] && {
-        KERNEL_REPO_URL="${KERNEL_REPO_URL//opt\/kernel/opt}"
-        KERNEL_DIR=("kernel" "rk3588")
-    }
-    # Remove [ /stable ] for ophub kernel repository
-    [[ "${KERNEL_REPO_URL,,}" == *"github.com/ophub/kernel/"* ]] && {
-        KERNEL_REPO_URL="${KERNEL_REPO_URL//pub\/stable/pub}"
-        KERNEL_DIR=("stable" "rk3588")
-    }
+    # Convert kernel library address to api format
     echo -e "${INFO} Kernel download repository: [ ${KERNEL_REPO_URL} ]"
-    echo -e "${INFO} Kernel storage directory: [ ${KERNEL_DIR[*]} ]"
+    [[ "${KERNEL_REPO_URL}" =~ ^https: ]] && KERNEL_REPO_URL="$(echo ${KERNEL_REPO_URL} | awk -F'/' '{print $4"/"$5}')"
+    kernel_api="https://api.github.com/repos/${KERNEL_REPO_URL}"
+    echo -e "${INFO} Kernel Query API: [ ${kernel_api} ]"
 
     # Reset COMMON_KERNEL options
     [[ -n "${KERNEL_VERSION_NAME}" ]] && {
@@ -217,9 +198,11 @@ init_packit_repo() {
     if [[ "${OPENWRT_ARMVIRT}" == http* ]]; then
         echo -e "${STEPS} wget [ ${OPENWRT_ARMVIRT} ] file into [ ${SELECT_PACKITPATH} ]"
         wget ${OPENWRT_ARMVIRT} -q -O "${SELECT_PACKITPATH}/${PACKAGE_FILE}"
+        [[ "${?}" -eq "0" ]] || error_msg "Openwrt rootfs file download failed."
     else
         echo -e "${STEPS} copy [ ${GITHUB_WORKSPACE}/${OPENWRT_ARMVIRT} ] file into [ ${SELECT_PACKITPATH} ]"
         cp -f ${GITHUB_WORKSPACE}/${OPENWRT_ARMVIRT} ${SELECT_PACKITPATH}/${PACKAGE_FILE}
+        [[ "${?}" -eq "0" ]] || error_msg "Openwrt rootfs file copy failed."
     fi
 
     # Normal ${PACKAGE_FILE} file should not be less than 10MB
@@ -230,15 +213,25 @@ init_packit_repo() {
     else
         error_msg "The [ ${SELECT_PACKITPATH}/${PACKAGE_FILE} ] failed to load."
     fi
+
+    # Add custom script
+    [[ -n "${SCRIPT_DIY_PATH}" ]] && {
+        if [[ "${SCRIPT_DIY_PATH}" == http* ]]; then
+            echo -e "${INFO} Use wget to download custom script file: [ ${SCRIPT_DIY_PATH} ]"
+            wget ${SCRIPT_DIY_PATH} -q -O "${SELECT_PACKITPATH}/${SCRIPT_DIY}"
+            [[ "${?}" -eq "0" ]] || error_msg "Custom script file download failed."
+        else
+            echo -e "${INFO} Copy custom script file: [ ${SCRIPT_DIY_PATH} ]"
+            cp -f ${GITHUB_WORKSPACE}/${SCRIPT_DIY_PATH} ${SELECT_PACKITPATH}/${SCRIPT_DIY}
+            [[ "${?}" -eq "0" ]] || error_msg "Custom script file copy failed."
+        fi
+        chmod +x ${SELECT_PACKITPATH}/${SCRIPT_DIY}
+        echo -e "List of [ ${SELECT_PACKITPATH} ] directory files:\n $(ls -l ${SELECT_PACKITPATH})"
+    }
 }
 
 auto_kernel() {
     echo -e "${STEPS} Start querying the latest kernel..."
-
-    # Convert to api method
-    SERVER_KERNEL_URL="${KERNEL_REPO_URL#*com\/}"
-    SERVER_KERNEL_URL="${SERVER_KERNEL_URL//trunk/contents}"
-    SERVER_KERNEL_URL="https://api.github.com/repos/${SERVER_KERNEL_URL}"
 
     # Check the version on the kernel library
     x="1"
@@ -254,25 +247,39 @@ auto_kernel() {
             # Query the name of the latest kernel version
             TMP_ARR_KERNELS=()
             i=1
-            for KERNEL_VAR in ${down_kernel_list[*]}; do
-                echo -e "${INFO} (${i}) Auto query the latest kernel version of the same series for [ ${vb} - ${KERNEL_VAR} ]"
+            for kernel_var in ${down_kernel_list[*]}; do
+                echo -e "${INFO} (${i}) Auto query the latest kernel version of the same series for [ ${vb} - ${kernel_var} ]"
 
-                # Identify the kernel mainline
-                MAIN_LINE="$(echo ${KERNEL_VAR} | awk -F '.' '{print $1"."$2}')"
+                # Identify the kernel <VERSION> and <PATCHLEVEL>, such as [ 6.1 ]
+                kernel_verpatch="$(echo ${kernel_var} | awk -F '.' '{print $1"."$2}')"
 
-                # Check the version on the server (e.g LATEST_VERSION="125")
                 if [[ -n "${GH_TOKEN}" ]]; then
-                    LATEST_VERSION="$(curl --header "authorization: Bearer ${GH_TOKEN}" -s "${SERVER_KERNEL_URL}/${vb}" | grep "name" | grep -oE "${MAIN_LINE}.[0-9]+" | sed -e "s/${MAIN_LINE}.//g" | sort -n | sed -n '$p')"
+                    latest_version="$(
+                        curl -s \
+                            -H "Accept: application/vnd.github+json" \
+                            -H "Authorization: Bearer ${GH_TOKEN}" \
+                            ${kernel_api}/releases/tags/kernel_${vb} |
+                            jq -r '.assets[].name' |
+                            grep -oE "${kernel_verpatch}\.[0-9]+" |
+                            sort -rV | head -n 1
+                    )"
                     query_api="Authenticated user request"
                 else
-                    LATEST_VERSION="$(curl -s "${SERVER_KERNEL_URL}/${vb}" | grep "name" | grep -oE "${MAIN_LINE}.[0-9]+" | sed -e "s/${MAIN_LINE}.//g" | sort -n | sed -n '$p')"
+                    latest_version="$(
+                        curl -s \
+                            -H "Accept: application/vnd.github+json" \
+                            ${kernel_api}/releases/tags/kernel_${vb} |
+                            jq -r '.assets[].name' |
+                            grep -oE "${kernel_verpatch}\.[0-9]+" |
+                            sort -rV | head -n 1
+                    )"
                     query_api="Unauthenticated user request"
                 fi
 
-                if [[ "$?" -eq "0" && -n "${LATEST_VERSION}" ]]; then
-                    TMP_ARR_KERNELS[${i}]="${MAIN_LINE}.${LATEST_VERSION}"
+                if [[ "$?" -eq "0" && -n "${latest_version}" ]]; then
+                    TMP_ARR_KERNELS[${i}]="${latest_version}"
                 else
-                    TMP_ARR_KERNELS[${i}]="${KERNEL_VAR}"
+                    TMP_ARR_KERNELS[${i}]="${kernel_var}"
                 fi
 
                 echo -e "${INFO} (${i}) [ ${vb} - ${TMP_ARR_KERNELS[$i]} ] is latest kernel (${query_api})."
@@ -336,19 +343,28 @@ download_kernel() {
 
             # Download the kernel to the storage directory
             i="1"
-            for KERNEL_VAR in ${down_kernel_list[*]}; do
-                if [[ "$(ls ${kernel_path}/*${KERNEL_VAR}*.tar.gz -l 2>/dev/null | grep "^-" | wc -l)" -lt "3" ]]; then
-                    echo -e "${INFO} (${i}) [ ${vb} - ${KERNEL_VAR} ] Kernel loading from [ ${KERNEL_REPO_URL/trunk/tree\/main}/${vb}/${KERNEL_VAR} ]"
-                    svn export ${KERNEL_REPO_URL}/${vb}/${KERNEL_VAR} ${kernel_path}/${KERNEL_VAR} --force
+            for kernel_var in ${down_kernel_list[*]}; do
+                if [[ ! -d "${kernel_path}/${kernel_var}" ]]; then
+                    kernel_down_from="https://github.com/${KERNEL_REPO_URL}/releases/download/kernel_${vb}/${kernel_var}.tar.gz"
+                    echo -e "${INFO} (${x}.${i}) [ ${vb} - ${kernel_var} ] Kernel download from [ ${kernel_down_from} ]"
+
+                    wget "${kernel_down_from}" -q -P "${kernel_path}"
+                    [[ "${?}" -ne "0" ]] && error_msg "Failed to download the kernel files from the server."
+
+                    tar -xf "${kernel_path}/${kernel_var}.tar.gz" -C "${kernel_path}"
+                    [[ "${?}" -ne "0" ]] && error_msg "[ ${kernel_var} ] kernel decompression failed."
                 else
-                    echo -e "${INFO} (${i}) [ ${vb} - ${KERNEL_VAR} ] Kernel is in the local directory."
+                    echo -e "${INFO} (${x}.${i}) [ ${vb} - ${kernel_var} ] Kernel is in the local directory."
                 fi
 
                 # If the kernel contains the sha256sums file, check the files integrity
-                [[ -f "${kernel_path}/${KERNEL_VAR}/sha256sums" ]] && check_kernel "${kernel_path}/${KERNEL_VAR}"
+                [[ -f "${kernel_path}/${kernel_var}/sha256sums" ]] && check_kernel "${kernel_path}/${kernel_var}"
 
                 let i++
             done
+
+            # Delete downloaded kernel temporary files
+            rm -f ${kernel_path}/*.tar.gz
             sync
 
             let x++
@@ -372,11 +388,11 @@ make_openwrt() {
             fi
 
             k="1"
-            for KERNEL_VAR in ${build_kernel[*]}; do
+            for kernel_var in ${build_kernel[*]}; do
                 {
                     # Rockchip rk3568 series only support 6.x.y and above kernel
-                    [[ -n "$(echo "${PACKAGE_OPENWRT_KERNEL6[@]}" | grep -w "${PACKAGE_VAR}")" && "${KERNEL_VAR:0:1}" -ne "6" ]] && {
-                        echo -e "${STEPS} (${i}.${k}) ${PROMPT} ${PACKAGE_VAR} cannot use ${KERNEL_VAR} kernel, skip."
+                    [[ -n "$(echo "${PACKAGE_OPENWRT_KERNEL6[@]}" | grep -w "${PACKAGE_VAR}")" && "${kernel_var:0:1}" -ne "6" ]] && {
+                        echo -e "${STEPS} (${i}.${k}) ${PROMPT} ${PACKAGE_VAR} cannot use ${kernel_var} kernel, skip."
                         let k++
                         continue
                     }
@@ -392,13 +408,12 @@ make_openwrt() {
 
                     # Copy the kernel to the packaging directory
                     rm -f *.tar.gz
-                    cp -f ${vb}/${KERNEL_VAR}/* .
+                    cp -f ${vb}/${kernel_var}/* .
                     #
-                    boot_kernel_file="$(ls boot-${KERNEL_VAR}* 2>/dev/null | head -n 1)"
-                    boot_kernel_file="${boot_kernel_file//boot-/}"
-                    boot_kernel_file="${boot_kernel_file//.tar.gz/}"
-                    [[ "${vb}" == "rk3588" ]] && rk3588_file="${boot_kernel_file}" || rk3588_file=""
-                    echo -e "${STEPS} (${i}.${k}) Start packaging OpenWrt: [ ${PACKAGE_VAR} ], Kernel directory: [ ${vb} ], Kernel name: [ ${boot_kernel_file} ]"
+                    boot_kernel_file="$(ls boot-${kernel_var}* 2>/dev/null | head -n 1)"
+                    KERNEL_VERSION="${boot_kernel_file:5:-7}"
+                    [[ "${vb}" == "rk3588" ]] && RK3588_KERNEL_VERSION="${KERNEL_VERSION}" || RK3588_KERNEL_VERSION=""
+                    echo -e "${STEPS} (${i}.${k}) Start packaging OpenWrt: [ ${PACKAGE_VAR} ], Kernel directory: [ ${vb} ], Kernel version: [ ${KERNEL_VERSION} ]"
                     echo -e "${INFO} Remaining space is ${now_remaining_space}G. \n"
 
                     cd /opt/${SELECT_PACKITPATH}
@@ -416,8 +431,8 @@ make_openwrt() {
                     cat >make.env <<EOF
 WHOAMI="${WHOAMI}"
 OPENWRT_VER="${OPENWRT_VER}"
-RK3588_KERNEL_VERSION="${rk3588_file}"
-KERNEL_VERSION="${boot_kernel_file}"
+RK3588_KERNEL_VERSION="${RK3588_KERNEL_VERSION}"
+KERNEL_VERSION="${KERNEL_VERSION}"
 KERNEL_PKG_HOME="/opt/kernel"
 SW_FLOWOFFLOAD="${SW_FLOWOFFLOAD}"
 HW_FLOWOFFLOAD="${HW_FLOWOFFLOAD}"
@@ -466,7 +481,7 @@ EOF
                         gz | .gz | *)  pigz -f *.img ;;
                     esac
 
-                    echo -e "${SUCCESS} (${i}.${k}) OpenWrt packaging succeeded: [ ${PACKAGE_VAR} - ${vb} - ${KERNEL_VAR} ] \n"
+                    echo -e "${SUCCESS} (${i}.${k}) OpenWrt packaging succeeded: [ ${PACKAGE_VAR} - ${vb} - ${kernel_var} ] \n"
                     sync
 
                     let k++
@@ -508,27 +523,29 @@ out_github_env() {
     fi
 }
 
-# Show server free space
+# Show welcome message
 echo -e "${STEPS} Welcome to use the OpenWrt packaging tool! \n"
-echo -e "${INFO} Server CPU configuration information: \n$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
-echo -e "${INFO} Server memory usage: \n$(free -h) \n"
-echo -e "${INFO} Server space usage before starting to compile:\n$(df -hT ${PWD}) \n"
 
 # Initialize and download resources
 init_var
 init_packit_repo
 [[ "${KERNEL_AUTO_LATEST}" == "true" ]] && auto_kernel
 download_kernel
-#
+
+# Show packit settings
 echo -e "${INFO} [ ${#PACKAGE_OPENWRT[*]} ] lists of OpenWrt board: [ $(echo ${PACKAGE_OPENWRT[*]} | xargs) ]"
 echo -e "${INFO} [ ${#COMMON_KERNEL[*]} ] lists of common kernel: [ $(echo ${COMMON_KERNEL[*]} | xargs) ]"
 echo -e "${INFO} [ ${#RK3588_KERNEL[*]} ] lists of rk3588 Kernel: [ $(echo ${RK3588_KERNEL[*]} | xargs) ]"
 echo -e "${INFO} Use the latest kernel version: [ ${KERNEL_AUTO_LATEST} ] \n"
-#
+# Show server start information
+echo -e "${INFO} Server CPU configuration information: \n$(cat /proc/cpuinfo | grep name | cut -f2 -d: | uniq -c) \n"
+echo -e "${INFO} Server memory usage: \n$(free -h) \n"
+echo -e "${INFO} Server space usage before starting to compile:\n$(df -hT ${PWD}) \n"
+
 # Loop to make OpenWrt
 make_openwrt
 out_github_env
-#
-# Display the remaining space on the server
+
+# Show server end information
 echo -e "${INFO} Server space usage after compilation:\n$(df -hT ${PWD}) \n"
 echo -e "${SUCCESS} The packaging process has been completed. \n"
