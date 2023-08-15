@@ -7,9 +7,8 @@ init_work_env
 
 PLATFORM=rockchip
 SOC=rk3588
-BOARD=h88k
+BOARD=h88k-v3
 
-# 新增参数：若SUBVER=25, 则表示此固件为双2.5G网卡(默认是2.5G+1G)
 SUBVER=$1
 
 if [ -n "$RK3588_KERNEL_VERSION" ];then
@@ -33,13 +32,7 @@ OPWRT_ROOTFS_GZ=$(get_openwrt_rootfs_archive ${PWD})
 check_file ${OPWRT_ROOTFS_GZ}
 echo "Use $OPWRT_ROOTFS_GZ as openwrt rootfs!"
 
-# Target Image
-if [ "$SUBVER" == "25" ];then
-    TGT_IMG="${WORK_DIR}/openwrt_${SOC}_${BOARD}_${OPENWRT_VER}_k${KERNEL_VERSION}_${SUBVER}.img"
-else
-    BOARD=ak88
-    TGT_IMG="${WORK_DIR}/openwrt_${SOC}_${BOARD}_${OPENWRT_VER}_k${KERNEL_VERSION}.img"
-fi
+TGT_IMG="${WORK_DIR}/openwrt_${SOC}_${BOARD}_${OPENWRT_VER}_k${KERNEL_VERSION}.img"
 
 # patches、scripts
 ####################################################################
@@ -51,7 +44,7 @@ KMOD="${PWD}/files/kmod"
 KMOD_BLACKLIST="${PWD}/files/kmod_blacklist"
 
 FIRSTRUN_SCRIPT="${PWD}/files/first_run.sh"
-DAEMON_JSON="${PWD}/files/rk3588/h88k/daemon.json"
+DAEMON_JSON="${PWD}/files/rk3588/h88k-v3/daemon.json"
 
 TTYD="${PWD}/files/ttyd"
 FLIPPY="${PWD}/files/scripts_deprecated/flippy_cn"
@@ -75,7 +68,7 @@ SSL_CNF_PATCH="${PWD}/files/openssl_engine.patch"
 # 20201024 add
 BAL_ETH_IRQ="${PWD}/files/balethirq.pl"
 # 20201212 add
-BAL_CONFIG="${PWD}/files/rk3588/h88k/balance_irq"
+BAL_CONFIG="${PWD}/files/rk3588/h88k-v3/balance_irq"
 
 # 20210307 add
 SS_LIB="${PWD}/files/ss-glibc/lib-glibc.tar.xz"
@@ -87,7 +80,7 @@ DOCKERD_PATCH="${PWD}/files/dockerd.patch"
 
 # 20200416 add
 FIRMWARE_TXZ="${PWD}/files/firmware_armbian.tar.xz"
-BOOTFILES_HOME="${PWD}/files/bootfiles/rockchip/rk3588/h88k"
+BOOTFILES_HOME="${PWD}/files/bootfiles/rockchip/rk3588/h88k-v3"
 GET_RANDOM_MAC="${PWD}/files/get_random_mac.sh"
 BOOTLOADER_IMG="${PWD}/files/rk3588/h88k/rk3588-h88k-bootloader.bin"
 
@@ -96,7 +89,7 @@ DOCKER_README="${PWD}/files/DockerReadme.pdf"
 
 # 20210704 add
 SYSINFO_SCRIPT="${PWD}/files/30-sysinfo.sh"
-FORCE_REBOOT="${PWD}/files/rk3588/h88k/reboot"
+FORCE_REBOOT="${PWD}/files/rk3588/h88k-v3/reboot"
 
 # 20210923 add
 OPENWRT_KERNEL="${PWD}/files/openwrt-kernel"
@@ -110,17 +103,17 @@ DDBR="${PWD}/files/openwrt-ddbr"
 SSH_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
 SSHD_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,chacha20-poly1305@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
 # 20220906 add
-PWM_FAN="${PWD}/files/rk3588/h88k/pwm-fan.pl"
+PWM_FAN="${PWD}/files/rk3588/h88k-v3/pwm-fan.pl"
 # 20221001 add
 MODULES_HOME="${PWD}/files/rk3588/modules.d"
 # 20221022
-BOARD_HOME="${PWD}/files/rk3588/h88k/board.d"
+BOARD_HOME="${PWD}/files/rk3588/h88k-v3/board.d"
 # 20230801 add
-WIRELESS_CONFIG="${PWD}/files/rk3588/h88k/wireless"
+WIRELESS_CONFIG="${PWD}/files/rk3588/h88k-v3/wireless"
 # 20230801 add
-BOARD_MODULES_HOME="${PWD}/files/rk3588/h88k/modules.d"
+BOARD_MODULES_HOME="${PWD}/files/rk3588/h88k-v3/modules.d"
 # 20230801 add
-NETWORK_SERVICE_PATCH="${PWD}/files/rk3588/h88k/network.patch"
+NETWORK_SERVICE_PATCH="${PWD}/files/rk3588/h88k-v3/network.patch"
 ####################################################################
 
 check_depends
@@ -144,10 +137,6 @@ cd $TGT_BOOT
 sed -e '/rootdev=/d' -i armbianEnv.txt
 sed -e '/rootfstype=/d' -i armbianEnv.txt
 sed -e '/rootflags=/d' -i armbianEnv.txt
-if [ "$SUBVER" == "25" ];then
-	echo "提示：此固件为双2.5g网卡版本！"
-	sed -e 's/^overlays=/overlays=disable-gmac0 /' -i armbianEnv.txt
-fi
 cat >> armbianEnv.txt <<EOF
 rootdev=UUID=${ROOTFS_UUID}
 rootfstype=btrfs
